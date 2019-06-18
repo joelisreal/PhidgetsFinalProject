@@ -9,7 +9,8 @@
 import UIKit
 import Phidget22Swift
 import WebKit
-
+import AVKit
+import Vision
 
 class ViewController: UIViewController {
     
@@ -22,11 +23,11 @@ class ViewController: UIViewController {
     var leftSpeed : Double = 0.0
     var rightSpeed : Double = 0.0
     var chooseDir : Bool = false
-    @IBOutlet weak var webCam: WKWebView!
+    @IBOutlet var webCam: WKWebView!
     var myURL = URL(string: "http://192.168.99.1:81/?action=stream")
 
     var sensor = DistanceSensor()
-    
+    var autoSensor : Int = 1
     
     func attach_handler(sender: Phidget) {
         do {
@@ -50,7 +51,7 @@ class ViewController: UIViewController {
             }
             else if hubPort == 3 {
                 print("Sensor attached")
-                try sensor.setDataInterval(100)
+              //  try sensor.setDataInterval(100)
                 //try sensor.setDistanceChangeTrigger(25)
             }
         } catch let err as PhidgetError{
@@ -67,10 +68,9 @@ class ViewController: UIViewController {
             print("hor  \(try voltHor.getVoltageRatio())")
             print("ver  \(try voltVert.getVoltageRatio())")
             print(objectDetected)
-            //DETERMINE MOTOR SPEEDS
-            leftSpeed = (try voltVert.getVoltageRatio()) + (try voltHor.getVoltageRatio())
-            rightSpeed = (try voltVert.getVoltageRatio()) - (try voltHor.getVoltageRatio())
-            
+            try motor1.setTargetVelocity(leftSpeed) //motor1 is LEFT side
+            try motor0.setTargetVelocity(rightSpeed) //motor2 is RIGHT side
+
             if objectDetected == true {
                 chooseDir = Bool.random()
                 
@@ -83,30 +83,33 @@ class ViewController: UIViewController {
                 }
             } else if objectDetected == false {
                 //SET MOTOR SPEEDS
-                try motor1.setTargetVelocity(leftSpeed) //motor1 is LEFT side
-                try motor0.setTargetVelocity(rightSpeed) //motor2 is RIGHT side
+                if autoSensor == 1 {
+                    //DETERMINE MOTOR SPEEDS
+                    leftSpeed = (try voltVert.getVoltageRatio()) + (try voltHor.getVoltageRatio())
+                    rightSpeed = (try voltVert.getVoltageRatio()) - (try voltHor.getVoltageRatio())
+                    
+                    // MAKE SURE SPEEDS ARE NOT > or < 1/-1
+                    if leftSpeed > 1 {
+                        leftSpeed = 1
+                    }
+                    else if leftSpeed < -1 {
+                        leftSpeed = -1
+                    }
                 
-                
-                // MAKE SURE SPEEDS ARE NOT > or < 1/-1
-                if leftSpeed > 1 {
+                    if rightSpeed > 1 {
+                        rightSpeed = 1
+                    }
+                    else if rightSpeed < -1 {
+                        rightSpeed = -1
+                    }
+                }
+                if autoSensor == -1 {
                     leftSpeed = 1
-                }
-                else if leftSpeed < -1 {
-                    leftSpeed = -1
-                }
-                
-                if rightSpeed > 1 {
                     rightSpeed = 1
                 }
-                else if rightSpeed < -1 {
-                    rightSpeed = -1
-                }
+
             }
-            
-            
-            
-            
-            
+
             
             
             
@@ -117,24 +120,12 @@ class ViewController: UIViewController {
         }
     }
     
-    func voltageVert(sender: VoltageRatioInput, voltageRatio: Double) {
-        do {
-            
-            print("vert  \(try voltVert.getVoltageRatio())")
-        } catch let err as PhidgetError{
-            print("Phidget Error113 " + err.description)
-        } catch {
-            //catch other errors here
-        }
-    }
-    
-    
     
     
     func distanceChange(sender: DistanceSensor, distance: UInt32) {
         do {
             print(distance)
-            if try sensor.getDistance() < 100 {
+            if try sensor.getDistance() < 4000 {
                 objectDetected = true
             } else {
                 objectDetected = false
@@ -150,8 +141,10 @@ class ViewController: UIViewController {
     func stateChange_handler(sender: DigitalInput, state: Bool){
         do {
             if state == true {
-                print(state)
+                autoSensor *= -1
+                
             }
+
             
             
         } catch let err as PhidgetError{
@@ -172,8 +165,25 @@ class ViewController: UIViewController {
         
         super.viewDidLoad()
         // Do any additional setup after loading the view.
-
-
+        //here is where the camera is set up
+//        let captureSession = AVCaptureSession()
+//
+//        guard let captureDevice = AVCaptureDevice.default(for: .video) else { return }
+//
+//        guard let input = try? AVCaptureDeviceInput(device: captureDevice) else { return }
+//        captureSession.addInput(input)
+//
+//        captureSession.startRunning()
+//
+//        let previewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+//        view.layer.addSublayer(previewLayer)
+//        previewLayer.frame = view.frame
+        let myRequest = URLRequest(url: myURL!)
+        webCam.load(myRequest)
+     //   let dataOutput = webCam.load(myRequest)
+      //  let request = VNCoreMLRequest(model: <#T##VNCoreMLModel#>, completionHandler: <#T##VNRequestCompletionHandler?##VNRequestCompletionHandler?##(VNRequest, Error?) -> Void#>)
+      //  VNImageRequestHandler(cgImage: <#T##CGImage#>, options: [:]).perform(<#T##requests: [VNRequest]##[VNRequest]#>)
+        
         do {
             try Net.addServer(serverName: "phidgetsbc", address: "192.168.99.1", port: 5661, password: "", flags: 0)
             //enable server discovery
@@ -186,9 +196,8 @@ class ViewController: UIViewController {
 //            view.addConstraints(h)  //This is where I was going wrong
 //            view.addConstraints(w)  //This is where I was going wrong
             
-            let myRequest = URLRequest(url: myURL!)
-            webCam.load(myRequest)
-           // try Net.addServer(serverName: "phidgetsbc", address: "192.168.99.1", port: 0)
+
+
             //address objects
             try voltVert.setDeviceSerialNumber(528025)
             try voltVert.setHubPort(0)
@@ -233,10 +242,10 @@ class ViewController: UIViewController {
             
             
             //open objects
-            try voltVert.open(timeout: 4000)
+            try voltVert.open(timeout: 8000)
               print(2)
-            try voltHor.open(timeout: 4100)
-            try button.open(timeout: 4200)
+            try voltHor.open(timeout: 8100)
+            try button.open(timeout: 8200)
             try motor0.open(timeout: 4300)
             try motor1.open(timeout: 4400)
             try sensor.open(timeout: 4500)
